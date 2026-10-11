@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Conversor MP3 → OGG em lote</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    max-width: 880px; margin: 0 auto; padding: 16px;
+    background: #0f1115; color: #e6e8ee;
+  }
+  h1 { font-size: 1.2rem; margin: 0 0 4px; }
+  p.sub { margin: 0 0 16px; color: #9aa3b2; font-size: .85rem; line-height: 1.5; }
+  .card {
+    background: #171a21; border: 1px solid #262b36; border-radius: 12px;
+    padding: 14px; margin-bottom: 12px;
+  }
+  label.file {
+    display: block; padding: 16px 12px; border: 1px dashed #3a4152;
+    border-radius: 10px; cursor: pointer; text-align: center;
+    color: #c3cad6; font-size: .92rem; transition: .15s;
+  }
+  label.file:active { border-color: #5b7cfa; background: #1b2030; color: #fff; }
+  input[type=file] { display: none; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  button {
+    background: #5b7cfa; color: #fff; border: 0; padding: 12px 16px;
+    border-radius: 8px; cursor: pointer; font-size: .95rem; font-weight: 500;
+    flex: 1 1 auto; min-height: 44px;
+  }
+  button:active:not(:disabled) { background: #6f8cfb; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.ghost { background: #262b36; }
+  button.ghost:active:not(:disabled) { background: #313846; }
+  select {
+    background: #262b36; color: #e6e8ee; border: 1px solid #3a4152;
+    padding: 8px 10px; border-radius: 8px; font-size: .9rem;
+    min-height: 40px;
+  }
+  label.inline { font-size: .88rem; color: #9aa3b2; display: flex;
+    align-items: center; gap: 6px; flex: 1 1 140px; }
+  ul.list { list-style: none; padding: 0; margin: 0; max-height: 45vh; overflow-y: auto; }
+  ul.list li {
+    padding: 9px 4px; border-bottom: 1px solid #222732; font-size: .85rem;
+    display: flex; justify-content: space-between; gap: 10px; align-items: center;
+  }
+  ul.list li:last-child { border-bottom: 0; }
+  .fname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status { color: #9aa3b2; flex-shrink: 0; font-variant-numeric: tabular-nums; font-size: .82rem; }
+  .ok  { color: #4ade80; }
+  .err { color: #f87171; }
+  #destLabel { font-size: .88rem; color: #9aa3b2; word-break: break-all; }
+  .hint { font-size: .8rem; color: #6b7484; margin-top: 10px; line-height: 1.5; }
+  .bar {
+    height: 6px; background: #262b36; border-radius: 3px; overflow: hidden;
+    margin-top: 12px; display: none;
+  }
+  .bar > div { height: 100%; background: #5b7cfa; width: 0; transition: width .2s; }
+  #log { font-size: .8rem; color: #9aa3b2; margin-top: 10px; white-space: pre-wrap; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<h1>Conversor MP3 → OGG em lote</h1>
+<p class="sub">
+  Roda 100% no seu navegador (FFmpeg WebAssembly). Nenhum arquivo é enviado pra servidor.
+</p>
+
+<div class="card">
+  <div class="row" style="margin-bottom: 12px;">
+    <label class="file" style="flex: 1 1 240px;">
+      📁 Escolher uma pasta inteira
+      <input type="file" id="folderInput" webkitdirectory directory multiple>
+    </label>
+    <label class="file" style="flex: 1 1 240px;">
+      🎵 Escolher arquivos soltos
+      <input type="file" id="filesInput" accept="audio/*,.mp3,.wav,.m4a,.flac,.aac,.ogg,.opus,.wma" multiple>
+    </label>
+  </div>
+  <div id="selectionInfo" class="hint">Nenhum arquivo selecionado.</div>
+</div>
+
+<div class="card">
+  <div class="row">
+    <button id="pickDestBtn" class="ghost">📂 Pasta de destino</button>
+    <span id="destLabel">Nenhuma pasta escolhida</span>
+  </div>
+  <div class="hint" id="destHint"></div>
+
+  <div class="row" style="margin-top: 14px;">
+    <label class="inline">Formato:
+      <select id="formatSel">
+        <option value="vorbis" selected>Ogg Vorbis (.ogg)</option>
+        <option value="opus">Ogg Opus (.opus)</option>
+        <option value="aac">M4A / AAC (.m4a)</option>
+      </select>
+    </label>
+    <label class="inline">Qualidade:
+      <select id="qualitySel">
+        <option value="4">Média</option>
+        <option value="6" selected>Boa</option>
+        <option value="8">Alta</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="hint">
+    💡 <b>Compatibilidade:</b> <b>Ogg Vorbis</b> funciona bem em Android, Firefox, VLC.
+    <b>Opus</b> tem melhor qualidade por bitrate. <b>M4A/AAC</b> é o único formato
+    reconhecido por iPhone, Safari, Windows e som automotivo.
+  </div>
+
+  <div class="row" style="margin-top: 14px;">
+    <button id="convertBtn">▶ Converter e salvar</button>
+  </div>
+  <div class="bar" id="bar"><div id="barFill"></div></div>
+</div>
+
+<div class="card">
+  <div id="summary" class="hint">Aguardando…</div>
+  <ul class="list" id="list"></ul>
+</div>
+
+<script type="module">
+import { FFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
+import { fetchFile, toBlobURL } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js';
+
+/* ---------- Elementos ---------- */
+const filesInput    = document.getElementById('filesInput');
+const folderInput   = document.getElementById('folderInput');
+const selectionInfo = document.getElementById('selectionInfo');
+const pickDestBtn   = document.getElementById('pickDestBtn');
+const destLabel     = document.getElementById('destLabel');
+const destHint      = document.getElementById('destHint');
+const formatSel     = document.getElementById('formatSel');
+const qualitySel    = document.getElementById('qualitySel');
+const convertBtn    = document.getElementById('convertBtn');
+const listEl        = document.getElementById('list');
+const summaryEl     = document.getElementById('summary');
+const bar           = document.getElementById('bar');
+const barFill       = document.getElementById('barFill');
+
+/* ---------- Estado ---------- */
+const AUDIO_EXT = ['mp3','wav','m4a','aac','flac','ogg','oga','opus','wma','aif','aiff','alac','mp4','webm'];
+const supportsFS = typeof window.showDirectoryPicker === 'function';
+
+let selectedFiles = [];
+let destHandle    = null;
+let running       = false;
+let ffmpeg        = null;
+let ffmpegReady   = false;
+let currentStatusEl = null;
+
+if (!supportsFS) {
+  destHint.innerHTML =
+    '⚠️ Seu navegador não deixa escolher a pasta de destino. ' +
+    'Os arquivos vão pra pasta de downloads. ' +
+    'No Android, Chrome normalmente baixa em <b>Download</b>.';
+  pickDestBtn.disabled = true;
+}
+
+/* ---------- Seleção ---------- */
+function isAudio(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  return (file.type && file.type.startsWith('audio/')) || AUDIO_EXT.includes(ext);
+}
+
+function updateSelection(fileList) {
+  const arr = [...fileList].filter(isAudio);
+  const seen = new Set();
+  selectedFiles = arr.filter(f => {
+    const key = (f.webkitRelativePath || f.name) + '|' + f.size;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  selectionInfo.textContent = selectedFiles.length
+    ? `✅ ${selectedFiles.length} áudio(s) selecionado(s).`
+    : '⚠️ Nenhum arquivo de áudio encontrado na seleção.';
+}
+
+filesInput.addEventListener('change',  e => updateSelection(e.target.files));
+folderInput.addEventListener('change', e => updateSelection(e.target.files));
+
+/* ---------- Destino ---------- */
+pickDestBtn.addEventListener('click', async () => {
+  try {
+    destHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    destLabel.textContent = '📁 ' + destHandle.name;
+  } catch (err) {
+    if (err.name !== 'AbortError') console.error(err);
+  }
+});
+
+/* ---------- FFmpeg ---------- */
+async function loadFFmpeg() {
+  if (ffmpegReady) return ffmpeg;
+
+  ffmpeg = new FFmpeg();
+
+  ffmpeg.on('progress', ({ progress }) => {
+    if (!currentStatusEl) return;
+    const pct = Math.max(0, Math.min(100, Math.round(progress * 100)));
+    currentStatusEl.textContent = pct + '%';
+  });
+
+  ffmpeg.on('log', ({ message }) => console.debug('[ffmpeg]', message));
+
+  // CORREÇÃO PRINCIPAL:
+  // 1. Usar a versão UMD do core (NÃO ESM) — a ESM tem bugs conhecidos com workers.
+  // 2. NÃO passar classWorkerURL — ele faz o worker entrar num branch ESM que nunca resolve.
+  // 3. Usar toBlobURL para todos os recursos, contornando CORS.
+  const baseCore = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
+
+  const loadPromise = ffmpeg.load({
+    coreURL: await toBlobURL(`${baseCore}/ffmpeg-core.js`,   'text/javascript'),
+    wasmURL: await toBlobURL(`${baseCore}/ffmpeg-core.wasm`, 'application/wasm'),
+    workerURL: await toBlobURL(`${baseCore}/ffmpeg-core.worker.js`, 'text/javascript'),
+  });
+
+  // Timeout de 60s: se o FFmpeg não carregar, mostra erro em vez de travar pra sempre.
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(
+      'FFmpeg demorou demais pra carregar (timeout de 60s). ' +
+      'Verifique sua conexão e recarregue a página.'
+    )), 60000)
+  );
+
+  await Promise.race([loadPromise, timeoutPromise]);
+
+  ffmpegReady = true;
+  return ffmpeg;
+}
+
+/* ---------- Utilidades ---------- */
+function baseName(name) {
+  const i = name.lastIndexOf('.');
+  return i > 0 ? name.slice(0, i) : name;
+}
+function extOf(name) {
+  const i = name.lastIndexOf('.');
+  return i > 0 ? name.slice(i + 1).toLowerCase() : 'bin';
+}
+function uniqueName(name, used) {
+  if (!used.has(name)) { used.add(name); return name; }
+  const dot  = name.lastIndexOf('.');
+  const base = dot > 0 ? name.slice(0, dot) : name;
+  const ext  = dot > 0 ? name.slice(dot) : '';
+  let n = 2, candidate;
+  do { candidate = `${base} (${n})${ext}`; n++; } while (used.has(candidate));
+  used.add(candidate);
+  return candidate;
+}
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => (
+    { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]
+  ));
+}
+
+/* ---------- Salvar ---------- */
+async function saveBlob(blob, name) {
+  if (destHandle) {
+    const fileHandle = await destHandle.getFileHandle(name, { create: true });
+    const writable   = await fileHandle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+  } else {
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a);
+    a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  }
+}
+
+/* ---------- Codec / argumentos FFmpeg ---------- */
+function codecArgs() {
+  const fmt = formatSel.value;
+  const q   = qualitySel.value;
+
+  const common = ['-vn', '-map', '0:a:0'];
+
+  if (fmt === 'aac') {
+    const br = { '4': '128k', '6': '192k', '8': '256k' }[q] || '192k';
+    return [...common, '-c:a', 'aac', '-b:a', br, '-f', 'ipod'];
+  }
+
+  if (fmt === 'opus') {
+    const br = { '4': '96k', '6': '128k', '8': '192k' }[q] || '128k';
+    return [...common, '-c:a', 'libopus', '-b:a', br, '-f', 'ogg'];
+  }
+
+  return [...common, '-c:a', 'libvorbis', '-q:a', q, '-f', 'ogg'];
+}
+
+function outExtension() {
+  if (formatSel.value === 'opus') return 'opus';
+  if (formatSel.value === 'aac')  return 'm4a';
+  return 'ogg';
+}
+
+function mimeFor(fmt) {
+  if (fmt === 'aac')  return 'audio/mp4';
+  return 'audio/ogg';
+}
+
+/* ---------- Conversão ---------- */
+convertBtn.addEventListener('click', convertAll);
+
+async function convertAll() {
+  if (running) return;
+
+  if (!selectedFiles.length) {
+    alert('Selecione pelo menos um arquivo de áudio primeiro.');
+    return;
+  }
+
+  if (supportsFS && !destHandle) {
+    try {
+      destHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      destLabel.textContent = '📁 ' + destHandle.name;
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      console.error(err);
+    }
+  }
+
+  running = true;
+  convertBtn.disabled = true;
+  convertBtn.textContent = '⏳ Convertendo…';
+  listEl.innerHTML = '';
+  bar.style.display = 'block';
+  barFill.style.width = '0%';
+  summaryEl.textContent = 'Carregando FFmpeg (só na primeira vez, pode levar até 30s)…';
+
+  const fmt    = formatSel.value;
+  const outExt = outExtension();
+  const mime   = mimeFor(fmt);
+  const used   = new Set();
+  let ok = 0, fail = 0;
+
+  try {
+    const ff = await loadFFmpeg();
+    summaryEl.textContent = `Convertendo ${selectedFiles.length} arquivo(s)…`;
+
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+
+      const li = document.createElement('li');
+      li.innerHTML =
+        `<span class="fname" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span>` +
+        `<span class="status">0%</span>`;
+      listEl.appendChild(li);
+      li.scrollIntoView({ block: 'nearest' });
+
+      const statusEl = li.querySelector('.status');
+      currentStatusEl = statusEl;
+
+      const inName  = `in_${i}.${extOf(file.name)}`;
+      const outName = `out_${i}.${outExt}`;
+
+      try {
+        await ff.writeFile(inName, await fetchFile(file));
+        await ff.exec(['-i', inName, ...codecArgs(), outName]);
+
+        const data = await ff.readFile(outName);
+        if (!data || data.length === 0) {
+          throw new Error('FFmpeg gerou saída vazia — verifique o log no console.');
+        }
+
+        const blob = new Blob([data], { type: mime });
+
+        const finalName = uniqueName(baseName(file.name) + '.' + outExt, used);
+        await saveBlob(blob, finalName);
+
+        statusEl.textContent = '✔ salvo';
+        statusEl.className = 'status ok';
+        ok++;
+      } catch (err) {
+        console.error('Falha ao converter', file.name, err);
+        statusEl.textContent = '✖ erro';
+        statusEl.className = 'status err';
+        statusEl.title = String(err && err.message ? err.message : err);
+        fail++;
+      } finally {
+        currentStatusEl = null;
+        try { await ff.deleteFile(inName);  } catch {}
+        try { await ff.deleteFile(outName); } catch {}
+      }
+
+      barFill.style.width = Math.round(((i + 1) / selectedFiles.length) * 100) + '%';
+    }
+  } catch (err) {
+    console.error(err);
+    summaryEl.innerHTML =
+      `<span class="err">Erro ao carregar o FFmpeg: ${escapeHtml(String(err))}</span><br>` +
+      `<span class="hint">Verifique sua conexão de internet — o FFmpeg é baixado do CDN ` +
+      `na primeira execução e depois fica em cache.</span>`;
+    running = false;
+    convertBtn.disabled = false;
+    convertBtn.textContent = '▶ Converter e salvar';
+    return;
+  }
+
+  summaryEl.innerHTML =
+    `Concluído: <span class="ok">${ok} convertido(s)</span>` +
+    (fail ? ` · <span class="err">${fail} com erro</span>` : '') +
+    (destHandle
+      ? ` — salvos em <b>${escapeHtml(destHandle.name)}</b>.`
+      : ' — enviados pra pasta de downloads.');
+
+  running = false;
+  convertBtn.disabled = false;
+  convertBtn.textContent = '▶ Converter e salvar';
+}
+</script>
+</body>
+</html>
